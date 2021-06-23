@@ -17,16 +17,6 @@ interface DeleteFile {
 }
 
 /**
- * @param errorMessage error message that should be printed to the terminal
- */
-
-const throwError = (errorMessage: string): void => {
-  throw new Error(errorMessage);
-};
-
-const isFile = (path: string): boolean => fs.statSync(path).isFile();
-
-/**
  * @param options object that contains the same options as the parameters in fileRemoval() except a callback
  */
 
@@ -51,11 +41,35 @@ const handleFileRemovalArgErrors = (fileRemovalOptions: FileRemovalOptions) => {
 };
 
 /**
+ * @param errorMessage error message that should be printed to the terminal
+ */
+
+const throwError = (errorMessage: string | Error): void => {
+  throw errorMessage;
+};
+
+/**
+ * @param path absolute path to a file or directory
+ * @returns true or false depending on whether the path leads to a directory or file
+ */
+
+const isFile = (path: string): boolean => fs.statSync(path).isFile();
+
+/**
+ * @param path absolute path to a file or directory
+ * @param cb callback that executes once file was successfully deleted
+ */
+
+const deleteFile = (path: string, cb: () => void): void => {
+  fs.unlink(path, (): void => cb());
+};
+
+/**
  * @param path absolute file path
  * @param cb callback that returns the root directory relative to a path
  */
 
-const ls = (path: string, cb: (directory: string) => any): void => {
+const ls = (path: string, cb: (dir: string[]) => void): void => {
   childProcess.exec(
     `ls ${path}`,
     (
@@ -63,9 +77,24 @@ const ls = (path: string, cb: (directory: string) => any): void => {
       stdout: string,
       stderr: string
     ): void => {
-      error || stderr ? throwError(error!.message || stderr) : cb(stdout);
+      error || stderr ? throwError(error || stderr) : cb(stdout.split("\n"));
     }
   );
+};
+
+/**
+ * @param targetPath absolute path to directory
+ * @param cb callback that returns each file within a folder
+ */
+
+const directoryFilter = (
+  targetPath: string,
+  cb: (file: string) => void
+): void => {
+  ls(targetPath, (dir: string[]): void => {
+    dir.pop();
+    dir.forEach((f: string): void => cb(f));
+  });
 };
 
 /**
@@ -75,34 +104,45 @@ const ls = (path: string, cb: (directory: string) => any): void => {
  * @function deleteFileWithMultipleWords
  * @function deleteFileWithCertainExtensionAndMultipleWords
  *
- * @param targetPath current absolute path that child_process will perform 'ls' on
+ * @param targetPath current absolute path that child_process will execute and essentially perform 'ls' on
  * @param wildcard special string that specifies what type of file to include in the deletion process
  */
 
-const deleteFileWithCertainWord: DeleteFile = (
-  targetPath: string,
-  wildcard: string
-) => {};
+let deleteFileWithCertainWord: DeleteFile;
+let deleteFileWithCertainExtension: DeleteFile;
+let deleteFileWithCertainExtensionAndWord: DeleteFile;
+let deleteFileWithMultipleWords: DeleteFile;
+let deleteFileWithCertainExtensionAndMultipleWords: DeleteFile;
 
-const deleteFileWithCertainExtension: DeleteFile = (
-  targetPath: string,
-  wildcard: string
-) => {};
+deleteFileWithCertainWord = (targetPath: string, wildcard: string): void => {};
 
-const deleteFileWithCertainExtensionAndWord: DeleteFile = (
+deleteFileWithCertainExtension = (
   targetPath: string,
-  wildcard: string
-) => {};
+  wildCard: string
+): void => {
+  directoryFilter(targetPath, (file: string): void => {
+    if (!isFile(file)) {
+      // TODO recursion
+    } else if (file.endsWith(wildCard)) {
+      deleteFile(file, (): void => console.log("deleted")); // TODO
+    }
+  });
+};
 
-const deleteFileWithMultipleWords: DeleteFile = (
+deleteFileWithCertainExtensionAndWord = (
   targetPath: string,
   wildcard: string
-) => {};
+): void => {};
 
-const deleteFileWithCertainExtensionAndMultipleWords: DeleteFile = (
+deleteFileWithMultipleWords = (
   targetPath: string,
   wildcard: string
-) => {};
+): void => {};
+
+deleteFileWithCertainExtensionAndMultipleWords = (
+  targetPath: string,
+  wildcard: string
+): void => {};
 
 /**
  * @param fileInclusion wildcard that matches to-be-deleted files
@@ -145,7 +185,7 @@ const fileDeleter = (
   startingPath: string,
   stoppingPath: string,
   fileTypes: FileTypes,
-  cb: () => any
+  cb: () => void
 ): void => {
   handleFileRemovalArgErrors({
     startingPath: startingPath,
@@ -179,15 +219,9 @@ fileDeleter(
   "./",
   "./",
   {
-    includedFileNames: [
-      "[.js]",
-      "[**example**]",
-      "[**example**.js]",
-      "[**example**other**]",
-      "[**example**other.js]",
-    ],
+    includedFileNames: ["[.js]"],
   },
-  () => {}
+  (): void => {}
 );
 
 module.exports = fileDeleter;
