@@ -154,7 +154,7 @@ const filterIncludedFilePaths = (
 ): void => {
   if (wildcard.includes("*")) {
     const wildCardError: string = "Invalid wildcard. See documentation.";
-    const asterixCount = (wildcard.match(/\*/g) || []).length;
+    const asterixCount: number = (wildcard.match(/\*/g) || []).length;
 
     if (asterixCount % 2 !== 0) {
       throwError(wildCardError);
