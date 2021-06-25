@@ -69,9 +69,9 @@ const deleteFile = (path: string, cb: () => void): void => {
  * @param cb callback that returns the root directory relative to a path
  */
 
-const ls = (path: string, cb: (dir: string[]) => void): void => {
+const ls = (targetPath: string, cb: (dir: string[]) => void): void => {
   childProcess.exec(
-    `ls ${path}`,
+    `ls ${targetPath}`,
     (
       error: childProcess.ExecException | null,
       stdout: string,
@@ -84,16 +84,35 @@ const ls = (path: string, cb: (dir: string[]) => void): void => {
 
 /**
  * @param targetPath absolute path to directory
- * @param cb callback that returns each file within a folder
+ * @param cb callback that returns files and folders in a directory
  */
 
-const directoryFilter = (
+const generateDirectory = (
   targetPath: string,
-  cb: (file: string) => void
+  cb: (path: string) => void
 ): void => {
   ls(targetPath, (dir: string[]): void => {
-    dir.pop();
+    dir.pop(); // TODO use slice()
     dir.forEach((f: string): void => cb(f));
+  });
+};
+
+const managePath = (
+  targetPath: string,
+  requirements: (absolutePathFromTargetDirectory: string) => boolean,
+  caller: (targetPath: string) => void
+): void => {
+  generateDirectory(targetPath, (path: string): void => {
+    const absolutePathFromTargetDirectory: string = `${targetPath}/${path}`;
+
+    if (
+      isFile(absolutePathFromTargetDirectory) &&
+      requirements(absolutePathFromTargetDirectory)
+    ) {
+      deleteFile(absolutePathFromTargetDirectory, (): void => {});
+    } else if (!isFile(absolutePathFromTargetDirectory)) {
+      caller(absolutePathFromTargetDirectory);
+    }
   });
 };
 
@@ -114,25 +133,42 @@ let deleteFileWithCertainExtensionAndWord: DeleteFile;
 let deleteFileWithMultipleWords: DeleteFile;
 let deleteFileWithCertainExtensionAndMultipleWords: DeleteFile;
 
-deleteFileWithCertainWord = (targetPath: string, wildcard: string): void => {};
+deleteFileWithCertainWord = (targetPath: string, wildCard: string): void => {
+  managePath(
+    targetPath,
+    (absolutePathFromTargetDirectory): boolean =>
+      absolutePathFromTargetDirectory.includes(wildCard),
+    (absolutePathFromTargetDirectory): void =>
+      deleteFileWithCertainWord(absolutePathFromTargetDirectory, wildCard)
+  );
+};
 
 deleteFileWithCertainExtension = (
   targetPath: string,
   wildCard: string
 ): void => {
-  directoryFilter(targetPath, (file: string): void => {
-    if (!isFile(file)) {
-      // TODO recursion
-    } else if (file.endsWith(wildCard)) {
-      deleteFile(file, (): void => console.log("deleted")); // TODO
-    }
-  });
+  managePath(
+    targetPath,
+    (absolutePathFromTargetDirectory): boolean =>
+      absolutePathFromTargetDirectory.endsWith(wildCard),
+    (absolutePathFromTargetDirectory): void =>
+      deleteFileWithCertainExtension(absolutePathFromTargetDirectory, wildCard)
+  );
 };
 
 deleteFileWithCertainExtensionAndWord = (
   targetPath: string,
-  wildcard: string
-): void => {};
+  wildCard: string
+): void => {
+  managePath(
+    targetPath,
+    (absolutePathFromTargetDirectory): boolean =>
+      absolutePathFromTargetDirectory.endsWith(wildCard.split(".")[1]) &&
+      absolutePathFromTargetDirectory.includes(wildCard.split(".")[0]),
+    (absolutePathFromTargetDirectory): void =>
+      deleteFileWithCertainExtension(absolutePathFromTargetDirectory, wildCard)
+  );
+};
 
 deleteFileWithMultipleWords = (
   targetPath: string,
@@ -144,9 +180,26 @@ deleteFileWithCertainExtensionAndMultipleWords = (
   wildcard: string
 ): void => {};
 
-/**
- * @param fileInclusion wildcard that matches to-be-deleted files
- */
+const sanitizeWildCard = (
+  wildCard: string,
+  type: string,
+  extension?: string
+): string => {
+  if (type === "deleteFileWithCertainWord") {
+    return wildCard.slice(1, -1).slice(1, -1);
+  } else if (type === "deleteFileWithCertainExtensionAndWord") {
+    return `${wildCard
+      .substring(1)
+      .substring(1)
+      .split(".")[0]
+      .slice(0, -1)
+      .slice(0, -1)}.${extension}`;
+  } else if (type === "deleteFileWithMultipleWords") {
+    // TODO return deleteFileWithMultipleWords
+  } else {
+    // TODO return deleteFileWithCertainExtensionAndMultipleWords
+  }
+};
 
 const filterIncludedFilePaths = (
   startingPath: string,
@@ -155,17 +208,37 @@ const filterIncludedFilePaths = (
   if (wildcard.includes("*")) {
     const wildCardError: string = "Invalid wildcard. See documentation.";
     const asterixCount: number = (wildcard.match(/\*/g) || []).length;
+    const extension = wildcard.split(".")[1];
 
     if (asterixCount % 2 !== 0) {
       throwError(wildCardError);
     } else if (asterixCount === 4 && !wildcard.includes(".")) {
-      deleteFileWithCertainWord(startingPath, wildcard);
+      deleteFileWithCertainWord(
+        startingPath,
+        sanitizeWildCard(wildcard, "deleteFileWithCertainWord")
+      );
     } else if (asterixCount === 4 && wildcard.includes(".")) {
-      deleteFileWithCertainExtensionAndWord(startingPath, wildcard);
+      deleteFileWithCertainExtensionAndWord(
+        startingPath,
+        sanitizeWildCard(
+          wildcard,
+          "deleteFileWithCertainExtensionAndWord",
+          extension
+        )
+      );
     } else if (asterixCount > 4 && !wildcard.includes(".")) {
-      deleteFileWithMultipleWords(startingPath, wildcard);
+      deleteFileWithMultipleWords(
+        startingPath,
+        sanitizeWildCard(wildcard, "deleteFileWithMultipleWords")
+      );
     } else if (asterixCount > 4 && wildcard.includes(".")) {
-      deleteFileWithCertainExtensionAndMultipleWords(startingPath, wildcard);
+      deleteFileWithCertainExtensionAndMultipleWords(
+        startingPath,
+        sanitizeWildCard(
+          wildcard,
+          "deleteFileWithCertainExtensionAndMultipleWords"
+        )
+      );
     } else {
       throwError(wildCardError);
     }
@@ -216,10 +289,10 @@ const fileDeleter = (
  */
 
 fileDeleter(
-  "./",
+  "./test",
   "./",
   {
-    includedFileNames: ["[.js]"],
+    includedFileNames: ["[**mike**]", "[.js]", "[**word**.js]"],
   },
   (): void => {}
 );
